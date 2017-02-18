@@ -5,173 +5,161 @@ import logging
 from spgl1.lsqr import lsqr
 from spgl1.spgl_aux import NormL12_project, NormL12_primal, NormL12_dual, \
                            NormL1_project,  NormL1_primal,  NormL1_dual, \
-                           spgSetParms, activeVars, spgLineCurvy, spgLine, reshape_rowwise
+                           spgSetParms, activeVars, spgLineCurvy, spgLine, \
+                           reshape_rowwise
 
 logger = logging.getLogger(__name__)
 
-def Aprodprelambda(A,x,mode):
+
+def Aprodprelambda(A, x, mode):
     from inspect import isfunction
     if mode == 1:
         if not isfunction(A):
-            return np.dot(A,x)
+            return np.dot(A, x)
         else:
-            return A(x,1)
+            return A(x, 1)
     else:
         if not isfunction(A):
-            return np.conj(np.dot(np.conj(x.T),A).T)
+            return np.conj(np.dot(np.conj(x.T), A).T)
         else:
-            return A(x,2)
+            return A(x, 2)
+
 
 def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
-# %SPGL1  Solve basis pursuit, basis pursuit denoise, and LASSO
-# %
-# % [x, r, g, info] = spgl1(A, b, tau, sigma, x0, options)
-# %
-# % ---------------------------------------------------------------------
-# % Solve the basis pursuit denoise (BPDN) problem
-# %
-# % (BPDN)   minimize  ||x||_1  subj to  ||Ax-b||_2 <= sigma,
-# %
-# % or the l1-regularized least-squares problem
-# %
-# % (LASSO)  minimize  ||Ax-b||_2  subj to  ||x||_1 <= tau.
-# % ---------------------------------------------------------------------
-# %
-# % INPUTS
-# % ======
-# % A        is an m-by-n matrix, explicit or an operator.
-# %          If A is a function, then it must have the signature
-# %
-# %          y = A(x,mode)   if mode == 1 then y = A x  (y is m-by-1);
-# %                          if mode == 2 then y = A'x  (y is n-by-1).
-# %
-# % b        is an m-vector.
-# % tau      is a nonnegative scalar; see (LASSO).
-# % sigma    if sigma != inf or != [], then spgl1 will launch into a
-# %          root-finding mode to find the tau above that solves (BPDN).
-# %          In this case, it's STRONGLY recommended that tau = 0.
-# % x0       is an n-vector estimate of the solution (possibly all
-# %          zeros). If x0 = [], then SPGL1 determines the length n via
-# %          n = length( A'b ) and sets  x0 = zeros(n,1).
-# % options  is a structure of options from spgSetParms. Any unset options
-# %          are set to their default value; set options=[] to use all
-# %          default values.
-# %
-# % OUTPUTS
-# % =======
-# % x        is a solution of the problem
-# % r        is the residual, r = b - Ax
-# % g        is the gradient, g = -A'r
-# % info     is a structure with the following information:
-# %          .tau     final value of tau (see sigma above)
-# %          .rNorm   two-norm of the optimal residual
-# %          .rGap    relative duality gap (an optimality measure)
-# %          .gNorm   Lagrange multiplier of (LASSO)
-# %          .stat    = 1 found a BPDN solution
-# %                   = 2 found a BP sol'n; exit based on small gradient
-# %                   = 3 found a BP sol'n; exit based on small residual
-# %                   = 4 found a LASSO solution
-# %                   = 5 error: too many iterrations
-# %                   = 6 error: linesearch failed
-# %                   = 7 error: found suboptimal BP solution
-# %                   = 8 error: too many matrix-vector products
-# %          .time    total solution time (seconds)
-# %          .nProdA  number of multiplications with A
-# %          .nProdAt number of multiplications with A'
-# %
-# % OPTIONS
-# % =======
-# % Use the options structure to control various aspects of the algorithm:
-# %
-# % options.fid         File ID to direct log output
-# %        .verbosity   0=quiet, 1=some output, 2=more output.
-# %        .iterrations  Max. number of iterrations (default if 10*m).
-# %        .bpTol       Tolerance for identifying a basis pursuit solution.
-# %        .optTol      Optimality tolerance (default is 1e-4).
-# %        .decTol      Larger decTol means more frequent Newton updates.
-# %        .subspaceMin 0=no subspace minimization, 1=subspace minimization.
-# %
-# % EXAMPLE
-# % =======
-# %   m = 120; n = 512; k = 20; % m rows, n cols, k nonzeros.
-# %   p = randperm(n); x0 = zeros(n,1); x0(p(1:k)) = sign(randn(k,1));
-# %   A  = randn(m,n); [Q,R] = qr(A',0);  A = Q';
-# %   b  = A*x0 + 0.005 * randn(m,1);
-# %   opts = spgSetParms('optTol',1e-4);
-# %   [x,r,g,info] = spgl1(A, b, 0, 1e-3, [], opts); % Find BP sol'n.
-# %
-# % AUTHORS
-# % =======
-# %  Ewout van den Berg (ewout78@cs.ubc.ca)
-# %  Michael P. Friedlander (mpf@cs.ubc.ca)
-# %    Scientific Computing Laboratory (SCL)
-# %    University of British Columbia, Canada.
+    """
+    SPGL1  Solve basis pursuit, basis pursuit denoise, and LASSO
+    [x, r, g, info] = spgl1(A, b, tau, sigma, x0, options)
+    ---------------------------------------------------------------------
+    Solve the basis pursuit denoise (BPDN) problem
+    (BPDN)   minimize  ||x||_1  subj to  ||Ax-b||_2 <= sigma,
+    or the l1-regularized least-squares problem
+    (LASSO)  minimize  ||Ax-b||_2  subj to  ||x||_1 <= tau.
+    ---------------------------------------------------------------------
+    INPUTS
+    ======
+    A        is an m-by-n matrix, explicit or an operator.
+             If A is a function, then it must have the signature
+             y = A(x,mode)   if mode == 1 then y = A x  (y is m-by-1);
+                             if mode == 2 then y = A'x  (y is n-by-1).
+    b        is an m-vector.
+    tau      is a nonnegative scalar; see (LASSO).
+    sigma    if sigma != inf or != [], then spgl1 will launch into a
+             root-finding mode to find the tau above that solves (BPDN).
+             In this case, it's STRONGLY recommended that tau = 0.
+    x0       is an n-vector estimate of the solution (possibly all
+             zeros). If x0 = [], then SPGL1 determines the length n via
+             n = length( A'b ) and sets  x0 = zeros(n,1).
+    options  is a structure of options from spgSetParms. Any unset options
+             are set to their default value; set options=[] to use all
+             default values.
+    OUTPUTS
+    =======
+    x        is a solution of the problem
+    r        is the residual, r = b - Ax
+    g        is the gradient, g = -A'r
+    info     is a structure with the following information:
+             .tau     final value of tau (see sigma above)
+             .rNorm   two-norm of the optimal residual
+             .rGap    relative duality gap (an optimality measure)
+             .gNorm   Lagrange multiplier of (LASSO)
+             .stat    = 1 found a BPDN solution
+                      = 2 found a BP sol'n; exit based on small gradient
+                      = 3 found a BP sol'n; exit based on small residual
+                      = 4 found a LASSO solution
+                      = 5 error: too many iterrations
+                      = 6 error: linesearch failed
+                      = 7 error: found suboptimal BP solution
+                      = 8 error: too many matrix-vector products
+             .time    total solution time (seconds)
+             .nProdA  number of multiplications with A
+             .nProdAt number of multiplications with A'
+    OPTIONS
+    =======
+    Use the options structure to control various aspects of the algorithm:
+    options.fid         File ID to direct log output
+           .verbosity   0=quiet, 1=some output, 2=more output.
+           .iterrations  Max. number of iterrations (default if 10*m).
+           .bpTol       Tolerance for identifying a basis pursuit solution.
+           .optTol      Optimality tolerance (default is 1e-4).
+           .decTol      Larger decTol means more frequent Newton updates.
+           .subspaceMin 0=no subspace minimization, 1=subspace minimization.
+    EXAMPLE
+    =======
+      m = 120; n = 512; k = 20; % m rows, n cols, k nonzeros.
+      p = randperm(n); x0 = zeros(n,1); x0(p(1:k)) = sign(randn(k,1));
+      A  = randn(m,n); [Q,R] = qr(A',0);  A = Q';
+      b  = A*x0 + 0.005 * randn(m,1);
+      opts = spgSetParms('optTol',1e-4);
+      [x,r,g,info] = spgl1(A, b, 0, 1e-3, [], opts); % Find BP sol'n.
+    AUTHORS
+    =======
+      Ewout van den Berg (ewout78@cs.ubc.ca)
+      Michael P. Friedlander (mpf@cs.ubc.ca)
+        Scientific Computing Laboratory (SCL)
+        University of British Columbia, Canada.
+      Translated to python by David Relyea (drrelyea@gmail.com)
+      This translation needs work - the core routines need to be
+      done in cython for speed
+      Still, it works.
+      I have not performed any unit testing - the code may have hidden issues
+      If you find any problems, please let me know
+    BUGS
+    ====
+    Please send bug reports or comments to
+               Michael P. Friedlander (mpf@cs.ubc.ca)
+               Ewout van den Berg (ewout78@cs.ubc.ca)
+     15 Apr 07: First version derived from spg.m.
+               Michael P. Friedlander (mpf@cs.ubc.ca).
+               Ewout van den Berg (ewout78@cs.ubc.ca).
+    17 Apr 07: Added root-finding code.
+    18 Apr 07: sigma was being compared to 1/2 r'r, rather than
+               norm(r), as advertised.  Now immediately change sigma to
+               (1/2)sigma^2, and changed log output accordingly.
+    24 Apr 07: Added quadratic root-finding code as an option.
+    24 Apr 07: Exit conditions need to guard against small ||r||
+               (ie, a BP solution).  Added test1,test2,test3 below.
+    15 May 07: Trigger to update tau is now based on relative difference
+               in objective between consecutive iterrations.
+    15 Jul 07: Added code to allow a limited number of line-search
+               errors.
+    23 Feb 08: Fixed bug in one-norm projection using weights. Thanks
+               to Xiangrui Meng for reporting this bug.
+    26 May 08: The simple call spgl1(A,b) now solves (BPDN) with sigma=0.
+    18 Mar 13: Reset f = fOld if curvilinear line-search fails.
+               Avoid computing the Barzilai-Borwein scaling parameter
+               when both line-search algorithms failed.
+    07 Feb 15: Code translated into python
+       ----------------------------------------------------------------------
+      This file is part of SPGL1 (Spectral Projected-Gradient for L1).
+      Copyright (C) 2007 Ewout van den Berg and Michael P. Friedlander,
+      Department of Computer Science, University of British Columbia, Canada.
+      All rights reserved. E-mail: <{ewout78,mpf}@cs.ubc.ca>.
 
-# Translated to python by David Relyea (drrelyea@gmail.com)
-# This translation needs work - the core routines need to be done in cython for speed
-# Still, it works
-# I have not performed any unit testing - the code may have hidden issues
-# If you find any problems, please let me know
+      SPGL1 is free software; you can redistribute it and/or modify it
+      under the terms of the GNU Lesser General Public License as
+      published by the Free Software Foundation; either version 2.1 of the
+      License, or (at your option) any later version.
 
-# %
-# % BUGS
-# % ====
-# % Please send bug reports or comments to
-# %            Michael P. Friedlander (mpf@cs.ubc.ca)
-# %            Ewout van den Berg (ewout78@cs.ubc.ca)
+      SPGL1 is distributed in the hope that it will be useful, but WITHOUT
+      ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+      or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General
+      Public License for more details.
 
-# % 15 Apr 07: First version derived from spg.m.
-# %            Michael P. Friedlander (mpf@cs.ubc.ca).
-# %            Ewout van den Berg (ewout78@cs.ubc.ca).
-# % 17 Apr 07: Added root-finding code.
-# % 18 Apr 07: sigma was being compared to 1/2 r'r, rather than
-# %            norm(r), as advertised.  Now immediately change sigma to
-# %            (1/2)sigma^2, and changed log output accordingly.
-# % 24 Apr 07: Added quadratic root-finding code as an option.
-# % 24 Apr 07: Exit conditions need to guard against small ||r||
-# %            (ie, a BP solution).  Added test1,test2,test3 below.
-# % 15 May 07: Trigger to update tau is now based on relative difference
-# %            in objective between consecutive iterrations.
-# % 15 Jul 07: Added code to allow a limited number of line-search
-# %            errors.
-# % 23 Feb 08: Fixed bug in one-norm projection using weights. Thanks
-# %            to Xiangrui Meng for reporting this bug.
-# % 26 May 08: The simple call spgl1(A,b) now solves (BPDN) with sigma=0.
-# % 18 Mar 13: Reset f = fOld if curvilinear line-search fails.
-# %            Avoid computing the Barzilai-Borwein scaling parameter
-# %            when both line-search algorithms failed.
-#   07 Feb 15: Code translated into python
-
-# %   ----------------------------------------------------------------------
-# %   This file is part of SPGL1 (Spectral Projected-Gradient for L1).
-# %
-# %   Copyright (C) 2007 Ewout van den Berg and Michael P. Friedlander,
-# %   Department of Computer Science, University of British Columbia, Canada.
-# %   All rights reserved. E-mail: <{ewout78,mpf}@cs.ubc.ca>.
-# %
-# %   SPGL1 is free software; you can redistribute it and/or modify it
-# %   under the terms of the GNU Lesser General Public License as
-# %   published by the Free Software Foundation; either version 2.1 of the
-# %   License, or (at your option) any later version.
-# %
-# %   SPGL1 is distributed in the hope that it will be useful, but WITHOUT
-# %   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-# %   or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General
-# %   Public License for more details.
-# %
-# %   You should have received a copy of the GNU Lesser General Public
-# %   License along with SPGL1; if not, write to the Free Software
-# %   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301
-# %   USA
-# %   ----------------------------------------------------------------------
+      You should have received a copy of the GNU Lesser General Public
+      License along with SPGL1; if not, write to the Free Software
+      Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301
+      USA
+      ----------------------------------------------------------------------
     # REVISION = '$Revision: 1017 $';
     # DATE     = '$Date: 2008-06-16 22:43:07 -0700 (Mon, 16 Jun 2008) $';
     # REVISION = REVISION(11:end-1);
     # DATE     = DATE(35:50);
+    """
 
     allocSize = 10000   # size of info vector pre-allocation
 
-    def betterAprod(A): return lambda x,mode: Aprodprelambda(A,x,mode)
+    def betterAprod(A):
+        return lambda x, mode: Aprodprelambda(A, x, mode)
 
     Aprod = betterAprod(A)
 
@@ -185,7 +173,7 @@ def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
         tau = 0
         sigma = 0
         singleTau = False
-    elif not sigma: # tau is not empty
+    elif not sigma:  # tau is not empty
         singleTau = True
     else:
         if not tau:
@@ -196,27 +184,27 @@ def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
     # % Grab input options and set defaults where needed.
     # %----------------------------------------------------------------------
     defaultopts = spgSetParms({
-    'fid'        :      1 , # File ID for output
-    'verbosity'  :      2 , # Verbosity level
-    'iterations' :   10*m , # Max number of iterrations
-    'nPrevVals'  :      3 , # Number previous func values for linesearch
-    'bpTol'      :  1e-06 , # Tolerance for basis pursuit solution
-    'lsTol'      :  1e-06 , # Least-squares optimality tolerance
-    'optTol'     :  1e-04 , # Optimality tolerance
-    'decTol'     :  1e-04 , # Reqd rel. change in primal obj. for Newton
-    'stepMin'    :  1e-16 , # Minimum spectral step
-    'stepMax'    :  1e+05 , # Maximum spectral step
-    'rootMethod' :      2 , # Root finding method: 2=quad,1=linear (not used).
-    'activeSetIt':    np.inf , # Exit with EXIT_ACTIVE_SET if nnz same for # its.
-    'subspaceMin':      0 , # Use subspace minimization
-    'iscomplex'  :    np.nan , # Flag set to indicate complex problem
-    'maxMatvec'  :    np.inf , # Maximum matrix-vector multiplies allowed
-    'weights'    :      1 , # Weights W in ||Wx||_1
-    'project'    : NormL1_project ,
-    'primal_norm': NormL1_primal  ,
-    'dual_norm'  : NormL1_dual
-       })
-    options = spgSetParms(defaultopts);
+        'fid'        :      1 ,  # File ID for output
+        'verbosity'  :      2 ,  # Verbosity level
+        'iterations' :   10*m ,  # Max number of iterrations
+        'nPrevVals'  :      3 ,  # Number previous func values for linesearch
+        'bpTol'      :  1e-06 ,  # Tolerance for basis pursuit solution
+        'lsTol'      :  1e-06 ,  # Least-squares optimality tolerance
+        'optTol'     :  1e-04 ,  # Optimality tolerance
+        'decTol'     :  1e-04 ,  # Reqd rel. change in primal obj. for Newton
+        'stepMin'    :  1e-16 ,  # Minimum spectral step
+        'stepMax'    :  1e+05 ,  # Maximum spectral step
+        'rootMethod' :      2 ,  # Root finding method: 2=quad,1=linear (not used).
+        'activeSetIt':    np.inf ,  # Exit with EXIT_ACTIVE_SET if nnz same for # its.
+        'subspaceMin':      0 ,  # Use subspace minimization
+        'iscomplex'  :    np.nan , # Flag set to indicate complex problem
+        'maxMatvec'  :    np.inf ,  # Maximum matrix-vector multiplies allowed
+        'weights'    :      1 , # Weights W in ||Wx||_1
+        'project'    : NormL1_project ,
+        'primal_norm': NormL1_primal  ,
+        'dual_norm'  : NormL1_dual
+    })
+    options = spgSetParms(defaultopts)
 
     # fid           = options['fid']
     # logLevel      = options['verbosity']
@@ -233,8 +221,8 @@ def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
     maxMatvec     = max(3,options['maxMatvec'])
     weights       = options['weights']
 
-    maxLineErrors = 10     #% Maximum number of line-search failures.
-    pivTol        = 1e-12  #% Threshold for significant Newton step.
+    maxLineErrors = 10      # Maximum number of line-search failures.
+    pivTol        = 1e-12   # Threshold for significant Newton step.
 
     # %----------------------------------------------------------------------
     # % Initialize local variables.
@@ -696,52 +684,48 @@ def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
     #    'Line search its',nLineTot,'','Subspace iterrations',itnTotLSQR);
     # printf('\n');
 
-    return x,r,g,info
+    return x, r, g, info
 
 
-
-
+# SPG Basis Pursuit
 def spg_bp(A, b, options={}):
-# %SPG_BP  Solve the basis pursuit (BP) problem
-# %
-# %   SPG_BP is designed to solve the basis pursuit problem
-# %
-# %   (BP)  minimize  ||X||_1  subject to  AX = B,
-# %
-# %   where A is an M-by-N matrix, B is an M-vector, and SIGMA is a
-# %   nonnegative scalar.  In all cases below, A can be an explicit M-by-N
-# %   matrix or matrix-like object for which the operations  A*x  and  A'*y
-# %   are defined (i.e., matrix-vector multiplication with A and its
-# %   adjoint.)
-# %
-# %   Also, A can be a function handle that points to a function with the
-# %   signature
-# %
-# %   v = A(w,mode)   which returns  v = A *w  if mode == 1;
-# %                                  v = A'*w  if mode == 2.
-# %
-# %   X = SPG_BP(A,B) solves the BP problem.
-# %
-# %   X = SPG_BP(A,B,OPTIONS) specifies options that are set using
-# %   SPGSETPARMS.
-# %
-# %   [X,R,G,INFO] = SPG_BP(A,B,OPTIONS) additionally returns the
-# %   residual R = B - A*X (which should be small), the objective gradient G
-# %   = A'*R, and an INFO structure.  (See SPGL1 for a description of this
-# %   last output argument.)
-# %
-# %   See also spgl1, spgSetParms, spg_bpdn, spg_lasso.
+    """
+    SPG_BP  Solve the basis pursuit (BP) problem
+    SPG_BP is designed to solve the basis pursuit problem
+    (BP)  minimize  ||X||_1  subject to  AX = B,
+    where A is an M-by-N matrix, B is an M-vector, and SIGMA is a
+    nonnegative scalar.  In all cases below, A can be an explicit M-by-N
+    matrix or matrix-like object for which the operations  A*x  and  A'*y
+    are defined (i.e., matrix-vector multiplication with A and its
+    adjoint.)
 
-# %   Copyright 2008, Ewout van den Berg and Michael P. Friedlander
-# %   http://www.cs.ubc.ca/labs/scl/spgl1
-# %   $Id: spg_bp.m 1074 2008-08-19 05:24:28Z ewout78 $
+    Also, A can be a function handle that points to a function with the
+    signature
 
+    v = A(w,mode)   which returns  v = A *w  if mode == 1;
+                                   v = A'*w  if mode == 2.
+
+    X = SPG_BP(A,B) solves the BP problem.
+
+    X = SPG_BP(A,B,OPTIONS) specifies options that are set using
+    SPGSETPARMS.
+
+    [X,R,G,INFO] = SPG_BP(A,B,OPTIONS) additionally returns the
+    residual R = B - A*X (which should be small), the objective gradient G
+    = A'*R, and an INFO structure.  (See SPGL1 for a description of this
+    last output argument.)
+
+    See also spgl1, spgSetParms, spg_bpdn, spg_lasso.
+
+    Copyright 2008, Ewout van den Berg and Michael P. Friedlander
+    http://www.cs.ubc.ca/labs/scl/spgl1
+    $Id: spg_bp.m 1074 2008-08-19 05:24:28Z ewout78 $
+    """
     sigma = 0
     tau = 0
-    x0  = []
-    x,r,g,info = spgl1(A,b,tau,sigma,x0,options);
-
-    return x,r,g,info
+    x0 = []
+    x, r, g, info = spgl1(A, b, tau, sigma, x0, options)
+    return x, r, g, info
 
 
 def spg_bpdn(A, b, sigma, options={}):
